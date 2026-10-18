@@ -15,6 +15,11 @@ services:
       - MUSIC_SOURCE_DIRS=/source
       - MUSIC_LIBRARY_DIR=/library
       - MUSIC_DATA_DIR=/data
+      # 音源中转 API（搜索下载用，如 ikun 音源）
+      - MUSIC_SCRAPE__API_URL=https://c.wwwweb.top
+      - MUSIC_SCRAPE__API_KEY=IKM-P82900001-SrUuI7iVi5Kfayhz-Yb
+      - MUSIC_SCRAPE__API_SOURCE=tx
+      - MUSIC_SCRAPE__API_QUALITY=128k
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:2691/api/health',timeout=3)"]
       interval: 30s
