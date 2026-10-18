@@ -13,7 +13,7 @@ from app.core.config import config
 from app.core.logger import logger
 from app.core.scheduler import start_scheduler, stop_scheduler
 
-STATIC_DIR = Path(__file__).resolve().parent.parent / "web" / "static"
+STATIC_DIR = Path(__file__).resolve().parent / "web" / "static"
 
 
 @asynccontextmanager
