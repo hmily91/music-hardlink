@@ -1,6 +1,6 @@
 services:
   music-hardlink:
-    image: music-hardlink:latest
+    image: hamily/music-hardlink:latest
     container_name: music-hardlink
     restart: unless-stopped
     ports:

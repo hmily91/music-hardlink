@@ -30,7 +30,7 @@
 ```yaml
 services:
   music-hardlink:
-    image: <你的dockerhub用户名>/music-hardlink:latest
+    image: hamily/music-hardlink:latest
     container_name: music-hardlink
     restart: unless-stopped
     ports:
