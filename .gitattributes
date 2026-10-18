@@ -1,0 +1,10 @@
+# 强制所有文本文件使用 LF 换行符（Linux 容器内执行必需）
+* text=auto eol=lf
+
+# shell 脚本必须 LF
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.js text eol=lf
+*.py text eol=lf
