@@ -10,7 +10,8 @@ from pydantic import BaseModel
 
 from app.core.config import config
 from app.core.database import get_db
-from app.services import hardlink, scraper
+from app.core.logger import logger
+from app.services import hardlink, scraper, search
 
 router = APIRouter(prefix="/api")
 
@@ -250,3 +251,50 @@ def _reload_bridge():
         httpx.post(f"{config.get('scrape.lx_bridge_url')}/reload", timeout=5)
     except Exception:  # noqa: BLE001
         pass
+
+
+# ---------- 搜索与下载 ----------
+@router.get("/search")
+async def search_music(keyword: str, limit: int = 20):
+    """搜索音乐，返回歌曲列表。"""
+    results = await search.search_songs(keyword, limit=limit)
+    return {"data": [
+        {
+            "id": s.id, "title": s.title, "artist": s.artist,
+            "album": s.album, "duration": s.duration,
+            "source": s.source, "cover_url": s.cover_url,
+        }
+        for s in results
+    ]}
+
+
+@router.post("/download")
+async def download_music(keyword: str, song_id: str):
+    """下载单曲到源目录，并自动触发硬链接同步 + 刮削。"""
+    result = await search.search_and_download(keyword, song_id)
+    if not result.get("success"):
+        return {"success": False, "message": result.get("message", "下载失败")}
+
+    path = result.get("path")
+    # 自动硬链接同步
+    try:
+        sync_result, _ = hardlink.execute_sync(dry_run=False)
+        get_db().add_log("info", "hardlink",
+                         f"下载后同步: 新建{sync_result.created} 重建{sync_result.rebuilt}")
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"下载后同步失败: {e}")
+
+    # 自动刮削（对新文件）
+    if path:
+        # 找到对应的硬链接目标并刮削
+        try:
+            from app.services import scraper as _scraper
+            # 同步后，硬链接目标在 /library 下，按源路径查目标
+            row = get_db().get_hardlink_by_source(path)
+            if row:
+                await _scraper.scrape_track(row["target_path"])
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"下载后刮削失败: {e}")
+
+    return {"success": True, "message": result.get("message", "下载完成"),
+            "path": path}

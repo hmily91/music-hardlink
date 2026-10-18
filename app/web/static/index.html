@@ -96,6 +96,7 @@ tr:hover td{background:var(--panel2)}
     <div class="logo">🎵 音乐<span>刮削</span></div>
     <nav class="nav">
       <a href="#dashboard" class="active" data-page="dashboard">概览</a>
+      <a href="#search" data-page="search">搜索下载</a>
       <a href="#library" data-page="library">媒体库</a>
       <a href="#hardlink" data-page="hardlink">硬链接</a>
       <a href="#scrape" data-page="scrape">刮削</a>
@@ -127,6 +128,27 @@ tr:hover td{background:var(--panel2)}
       <div class="panel">
         <h2>配置摘要</h2>
         <div id="config-summary" class="muted">加载中...</div>
+      </div>
+    </div>
+
+    <!-- 搜索下载 -->
+    <div class="page" id="page-search">
+      <h1>搜索下载</h1>
+      <div class="sub">搜索音乐 → 下载到源目录 → 自动硬链接 → 自动外置刮削</div>
+      <div class="panel">
+        <div class="toolbar">
+          <input id="search-kw" placeholder="输入歌名 / 歌手" style="flex:1;margin-bottom:0"
+                 onkeydown="if(event.key==='Enter')doSearch()">
+          <button class="btn primary" onclick="doSearch()">搜索</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>搜索结果</h2>
+        <div style="overflow-x:auto">
+          <table id="search-table"><thead><tr>
+            <th></th><th>歌曲</th><th>歌手</th><th>专辑</th><th>时长</th><th>来源</th><th>操作</th>
+          </tr></thead><tbody><tr><td colspan="7" class="muted">输入关键词搜索</td></tr></tbody></table>
+        </div>
       </div>
     </div>
 
@@ -334,6 +356,7 @@ $$('.nav a').forEach(a=>{
     $('#page-'+a.dataset.page).classList.add('active');
     // 按页面加载数据
     if(a.dataset.page==='dashboard') loadStats();
+    if(a.dataset.page==='search') {} // 搜索页无需预加载
     if(a.dataset.page==='library') loadTree();
     if(a.dataset.page==='hardlink') loadHardlinks();
     if(a.dataset.page==='scrape') loadScrapes();
@@ -352,10 +375,11 @@ async function loadStats(){
     $('#stat-failed').textContent = d.data.failed;
     const c = await api('/config');
     const cfg = c.data;
+    const toArr = v => Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',').map(s=>s.trim()).filter(Boolean) : (v ? [v] : []));
     $('#config-summary').innerHTML =
-      `源目录: <b>${(cfg.source_dirs||[]).join(', ')||'未配置'}</b> · `+
+      `源目录: <b>${toArr(cfg.source_dirs).join(', ')||'未配置'}</b> · `+
       `媒体库: <b>${cfg.library_dir||'未配置'}</b> · `+
-      `数据源: <b>${(cfg.scrape.providers||[]).join(' → ')}</b>`;
+      `数据源: <b>${toArr(cfg.scrape.providers).join(' → ')}</b>`;
   }catch(e){ toast(e.message, false); }
 }
 
@@ -437,13 +461,14 @@ async function loadConfigForm(){
   try{
     const d = await api('/config');
     const cfg = d.data;
+    const toArr = v => Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',').map(s=>s.trim()).filter(Boolean) : (v ? [v] : []));
     const map = {
-      'cfg-source_dirs': (cfg.source_dirs||[]).join(','),
+      'cfg-source_dirs': toArr(cfg.source_dirs).join(','),
       'cfg-library_dir': cfg.library_dir||'',
       'cfg-naming.artist': cfg.naming.artist,
       'cfg-naming.album': cfg.naming.album,
       'cfg-naming.track': cfg.naming.track,
-      'cfg-scrape.providers': (cfg.scrape.providers||[]).join(','),
+      'cfg-scrape.providers': toArr(cfg.scrape.providers).join(','),
       'cfg-hardlink.scan_interval_minutes': cfg.hardlink.scan_interval_minutes,
       'cfg-scrape.netease_cookie': cfg.scrape.netease_cookie,
       'cfg-scrape.qq_cookie': cfg.scrape.qq_cookie,
@@ -601,6 +626,45 @@ async function reloadSources(){
     await api('/source/reload', {method:'POST'});
     toast('已重载音源');
     loadSources();
+  }catch(e){ toast(e.message, false); }
+}
+
+// ---- 搜索下载 ----
+async function doSearch(){
+  const kw = $('#search-kw').value.trim();
+  if(!kw){ toast('请输入关键词', false); return; }
+  toast('搜索中...');
+  try{
+    const d = await api('/search?keyword='+encodeURIComponent(kw));
+    const rows = d.data;
+    $('#search-table tbody').innerHTML = rows.map((r,i)=>`
+      <tr>
+        <td>${i+1}</td>
+        <td>${r.title}</td>
+        <td>${r.artist||'-'}</td>
+        <td>${r.album||'-'}</td>
+        <td>${r.duration?formatDur(r.duration):'-'}</td>
+        <td><span class="badge info">${r.source}</span></td>
+        <td><button class="btn sm primary" onclick="doDownload('${encodeURIComponent(kw)}','${r.id}')">下载</button></td>
+      </tr>
+    `).join('') || '<tr><td colspan="7" class="muted">无结果</td></tr>';
+  }catch(e){ toast(e.message, false); }
+}
+function formatDur(s){
+  const m = Math.floor(s/60), sec = Math.floor(s%60);
+  return `${m}:${String(sec).padStart(2,'0')}`;
+}
+async function doDownload(kw, songId){
+  toast('下载中，请稍候...');
+  try{
+    const d = await api('/download?keyword='+kw+'&song_id='+songId, {method:'POST'});
+    if(d.success){
+      toast('✅ '+d.message);
+      // 刷新统计和媒体库
+      setTimeout(()=>{ loadStats(); loadTree(); }, 1500);
+    } else {
+      toast(d.message||'下载失败', false);
+    }
   }catch(e){ toast(e.message, false); }
 }
 

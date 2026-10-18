@@ -113,6 +113,10 @@ class Config:
                 path = key[6:].lower().split("__")
                 _set_nested(cfg, path, _coerce(value))
 
+        # 4) 规范化：列表类型字段统一转为 list，避免前端 .join() 报错
+        for dotted in ("source_dirs", "scrape.providers"):
+            _normalize_list(cfg, dotted)
+
         self._config = cfg
 
     # ---- 通用访问 ----
@@ -168,6 +172,26 @@ class Config:
 
 def _deep_copy(obj: Any) -> Any:
     return json.loads(json.dumps(obj, ensure_ascii=False))
+
+
+def _normalize_list(cfg: dict, dotted: str) -> None:
+    """把 dotted 路径对应的值规范化为 list。"""
+    node = cfg
+    parts = dotted.split(".")
+    for part in parts[:-1]:
+        if not isinstance(node.get(part), dict):
+            return
+        node = node[part]
+    key = parts[-1]
+    val = node.get(key)
+    if val is None:
+        node[key] = []
+    elif isinstance(val, str):
+        node[key] = [v.strip() for v in val.split(",") if v.strip()]
+    elif isinstance(val, list):
+        node[key] = val
+    else:
+        node[key] = [val]
 
 
 def _deep_merge(base: dict, override: dict) -> None:

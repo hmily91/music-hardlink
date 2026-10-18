@@ -65,6 +65,29 @@ class LxSourceProvider(BaseProvider):
             logger.debug(f"洛雪音源歌词获取失败: {e}")
         return "", ""
 
+    async def fetch_music_url(self, source: str, music_info: dict, quality: str = "128k") -> str:
+        """通过指定音源获取歌曲播放/下载 URL。"""
+        import json
+        try:
+            r = await self._http.get(
+                f"{self._bridge_url}/action",
+                params={
+                    "source": source,
+                    "action": "musicUrl",
+                    "musicInfo": json.dumps(music_info, ensure_ascii=False),
+                    "quality": quality,
+                },
+            )
+            if r.status_code == 200:
+                data = r.json().get("data", {})
+                if isinstance(data, str) and data.startswith("http"):
+                    return data
+                if isinstance(data, dict):
+                    return data.get("url", "") or data.get("musicUrl", "") or ""
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"洛雪音源 musicUrl 获取失败: {e}")
+        return ""
+
     async def fetch_pic(self, source: str, music_info: dict) -> str:
         """通过指定音源获取封面 URL。"""
         import json
