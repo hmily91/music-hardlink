@@ -7,7 +7,7 @@ services:
       - "2691:2691"
     volumes:
       - ./data:/data                       # 数据目录（数据库/缓存/音源脚本）
-      - /path/to/source:/source:ro         # 源目录（只读挂载，程序绝不写源文件）
+      - /path/to/source:/source            # 源目录（下载目标，须读写；硬链接绝不修改文件内容）
       - /path/to/library:/library          # 媒体库目录（硬链接目标，须与源同文件系统）
     environment:
       - TZ=Asia/Shanghai
