@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>音乐库硬链接刮削工具</title>
+<style>
+:root{
+  --bg:#0e1116; --panel:#171b24; --panel2:#1e2430; --border:#2a3242;
+  --text:#e6e9f0; --muted:#8b93a7; --accent:#4f8cff; --accent2:#7c5cff;
+  --green:#2ecc71; --yellow:#f1c40f; --red:#e74c3c; --radius:10px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  background:var(--bg);color:var(--text);font-size:14px;line-height:1.6}
+a{color:var(--accent);text-decoration:none}
+.layout{display:flex;min-height:100vh}
+.sidebar{width:220px;background:var(--panel);border-right:1px solid var(--border);
+  padding:16px 0;flex-shrink:0;position:sticky;top:0;height:100vh;overflow-y:auto}
+.logo{padding:0 20px 20px;font-size:18px;font-weight:700;letter-spacing:.5px}
+.logo span{color:var(--accent)}
+.nav a{display:block;padding:11px 20px;color:var(--muted);transition:.15s;
+  border-left:3px solid transparent}
+.nav a:hover{color:var(--text);background:var(--panel2)}
+.nav a.active{color:var(--text);border-left-color:var(--accent);background:var(--panel2)}
+.main{flex:1;padding:24px;max-width:1200px}
+h1{font-size:22px;margin-bottom:6px}
+.sub{color:var(--muted);margin-bottom:20px;font-size:13px}
+.page{display:none}
+.page.active{display:block}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:24px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:18px}
+.card .num{font-size:28px;font-weight:700}
+.card .label{color:var(--muted);font-size:13px;margin-top:4px}
+.card.blue .num{color:var(--accent)}.card.green .num{color:var(--green)}
+.card.yellow .num{color:var(--yellow)}.card.red .num{color:var(--red)}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+  padding:18px;margin-bottom:18px}
+.panel h2{font-size:16px;margin-bottom:14px;color:var(--text)}
+.panel h2 .hint{font-size:12px;color:var(--muted);font-weight:400}
+.btn{display:inline-block;padding:8px 16px;border-radius:8px;border:1px solid var(--border);
+  background:var(--panel2);color:var(--text);cursor:pointer;font-size:13px;transition:.15s;margin-right:8px}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{background:#3d78e6}
+.btn.warn{background:var(--yellow);border-color:var(--yellow);color:#1a1a1a}
+.btn.danger{background:var(--red);border-color:var(--red);color:#fff}
+.btn.sm{padding:4px 10px;font-size:12px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+input,select,textarea{width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);
+  background:var(--panel2);color:var(--text);font-size:13px;margin-bottom:10px}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)}
+label{display:block;margin-bottom:4px;color:var(--muted);font-size:12px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--border);font-size:13px}
+th{color:var(--muted);font-weight:500;white-space:nowrap}
+td{word-break:break-all}
+tr:hover td{background:var(--panel2)}
+.badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px}
+.badge.done{background:rgba(46,204,113,.15);color:var(--green)}
+.badge.failed{background:rgba(231,76,60,.15);color:var(--red)}
+.badge.pending{background:rgba(241,196,15,.15);color:var(--yellow)}
+.badge.active{background:rgba(79,140,255,.15);color:var(--accent)}
+.badge.info{background:rgba(139,147,167,.15);color:var(--muted)}
+.badge.warn{background:rgba(241,196,15,.15);color:var(--yellow)}
+.badge.error{background:rgba(231,76,60,.15);color:var(--red)}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.toolbar .spacer{flex:1}
+.tree{font-size:13px}
+.tree .node{margin-left:20px}
+.tree .dir{cursor:pointer;color:var(--text)}
+.tree .dir:before{content:"▸ ";color:var(--muted)}
+.tree .dir.open:before{content:"▾ "}
+.tree .file{margin-left:40px;color:var(--muted)}
+.tree .file.asset{color:var(--accent)}
+.tree .file.track{color:var(--green)}
+.log-view{font-family:"SF Mono",Consolas,monospace;font-size:12px;max-height:400px;overflow-y:auto}
+.log-view .line{padding:3px 0;border-bottom:1px solid #222}
+.log-view .line.warn{color:var(--yellow)}.log-view .line.error{color:var(--red)}
+.log-view .line.info{color:var(--text)}
+.toast{position:fixed;top:20px;right:20px;background:var(--panel);border:1px solid var(--border);
+  border-radius:8px;padding:12px 18px;z-index:999;display:none;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.toast.show{display:block;animation:slidein .3s}
+.toast.ok{border-color:var(--green)}.toast.err{border-color:var(--red)}
+@keyframes slidein{from{transform:translateX(30px);opacity:0}to{transform:none;opacity:1}}
+.muted{color:var(--muted)}
+.mt{margin-top:10px}
+.filter{display:flex;gap:8px;align-items:center}
+.filter select,.filter input{width:auto;margin-bottom:0}
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="logo">🎵 音乐<span>刮削</span></div>
+    <nav class="nav">
+      <a href="#dashboard" class="active" data-page="dashboard">概览</a>
+      <a href="#library" data-page="library">媒体库</a>
+      <a href="#hardlink" data-page="hardlink">硬链接</a>
+      <a href="#scrape" data-page="scrape">刮削</a>
+      <a href="#sources" data-page="sources">音源</a>
+      <a href="#logs" data-page="logs">日志</a>
+      <a href="#settings" data-page="settings">设置</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <!-- 概览 -->
+    <div class="page active" id="page-dashboard">
+      <h1>概览</h1>
+      <div class="sub">音乐库硬链接刮削工具 · 零拷贝 · 元数据全外置</div>
+      <div class="cards" id="stats-cards">
+        <div class="card blue"><div class="num" id="stat-hardlinks">-</div><div class="label">硬链接</div></div>
+        <div class="card green"><div class="num" id="stat-scraped">-</div><div class="label">已刮削</div></div>
+        <div class="card yellow"><div class="num" id="stat-pending">-</div><div class="label">待刮削</div></div>
+        <div class="card red"><div class="num" id="stat-failed">-</div><div class="label">失败</div></div>
+      </div>
+      <div class="panel">
+        <h2>快速操作</h2>
+        <div class="toolbar">
+          <button class="btn primary" onclick="doSync(false)">全量同步</button>
+          <button class="btn" onclick="doSync(true)">预览同步 (Dry Run)</button>
+          <button class="btn" onclick="doScrapeAll(false)">全量刮削</button>
+          <button class="btn" onclick="doScrapeAll(true)">强制重刮削</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>配置摘要</h2>
+        <div id="config-summary" class="muted">加载中...</div>
+      </div>
+    </div>
+
+    <!-- 媒体库 -->
+    <div class="page" id="page-library">
+      <h1>媒体库结构</h1>
+      <div class="sub">歌手 → 专辑 → 曲目 + 外置资源</div>
+      <div class="panel">
+        <div class="toolbar">
+          <button class="btn sm" onclick="loadTree()">刷新</button>
+          <span class="spacer"></span>
+        </div>
+        <div id="tree" class="tree">加载中...</div>
+      </div>
+    </div>
+
+    <!-- 硬链接 -->
+    <div class="page" id="page-hardlink">
+      <h1>硬链接管理</h1>
+      <div class="sub">绝不修改音频内容，仅管理链接与目录结构</div>
+      <div class="panel">
+        <div class="toolbar">
+          <button class="btn primary" onclick="doSync(false)">增量同步</button>
+          <button class="btn" onclick="doSync(true)">Dry Run</button>
+          <button class="btn" onclick="doRebuild(false)">批量重建</button>
+          <button class="btn danger" onclick="doCleanup(false)">清理失效链接</button>
+          <span class="spacer"></span>
+          <select id="hl-status-filter" onchange="loadHardlinks()">
+            <option value="">全部状态</option>
+            <option value="active">active</option>
+            <option value="orphan">orphan</option>
+            <option value="missing">missing</option>
+          </select>
+        </div>
+        <div style="overflow-x:auto">
+          <table id="hl-table"><thead><tr>
+            <th>源文件</th><th>目标路径</th><th>inode</th><th>状态</th><th>创建时间</th>
+          </tr></thead><tbody><tr><td colspan="5" class="muted">加载中...</td></tr></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 刮削 -->
+    <div class="page" id="page-scrape">
+      <h1>元数据刮削</h1>
+      <div class="sub">多数据源自动 fallback · 本地缓存 · 手动修正</div>
+      <div class="panel">
+        <div class="toolbar">
+          <button class="btn primary" onclick="doScrapeAll(false)">批量刮削</button>
+          <button class="btn" onclick="doScrapeAll(true)">强制重刮削</button>
+          <span class="spacer"></span>
+          <select id="sc-status-filter" onchange="loadScrapes()">
+            <option value="">全部状态</option>
+            <option value="done">done</option>
+            <option value="pending">pending</option>
+            <option value="failed">failed</option>
+          </select>
+        </div>
+        <div style="overflow-x:auto">
+          <table id="sc-table"><thead><tr>
+            <th>目标文件</th><th>数据源</th><th>匹配度</th><th>封面</th><th>歌词</th><th>状态</th>
+            <th>操作</th>
+          </tr></thead><tbody><tr><td colspan="7" class="muted">加载中...</td></tr></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 音源 -->
+    <div class="page" id="page-sources">
+      <h1>洛雪音源</h1>
+      <div class="sub">导入与洛雪音乐相通的 .js 音源脚本，补齐歌词与封面</div>
+      <div class="panel">
+        <h2>导入音源</h2>
+        <div class="toolbar">
+          <input type="file" id="src-file" accept=".js" style="width:auto" onchange="uploadSource()">
+          <span class="muted">或在线导入</span>
+          <input id="src-url" placeholder="https://.../latest.js" style="flex:1;margin-bottom:0">
+          <button class="btn primary sm" onclick="importSource()">在线导入</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>已导入音源</h2>
+        <div class="toolbar">
+          <button class="btn sm" onclick="loadSources()">刷新</button>
+          <button class="btn sm" onclick="reloadSources()">重载音源</button>
+          <span class="spacer"></span>
+          <span class="muted" id="src-status"></span>
+        </div>
+        <table id="src-table"><thead><tr>
+          <th>文件名</th><th>大小</th><th>操作</th>
+        </tr></thead><tbody><tr><td colspan="3" class="muted">加载中...</td></tr></tbody></table>
+      </div>
+      <div class="panel">
+        <h2>已初始化音源</h2>
+        <div class="sub">lx-bridge 中已成功加载的音源 key（kw/kg/tx/wy/mg/local 等）</div>
+        <div id="src-keys" class="muted">加载中...</div>
+      </div>
+    </div>
+
+    <!-- 日志 -->
+    <div class="page" id="page-logs">
+      <h1>操作日志</h1>
+      <div class="sub">按时间、类型筛选</div>
+      <div class="panel">
+        <div class="toolbar filter">
+          <select id="log-level" onchange="loadLogs()">
+            <option value="">全部级别</option>
+            <option value="info">info</option>
+            <option value="warn">warn</option>
+            <option value="error">error</option>
+          </select>
+          <select id="log-cat" onchange="loadLogs()">
+            <option value="">全部类型</option>
+            <option value="hardlink">hardlink</option>
+            <option value="scrape">scrape</option>
+            <option value="assets">assets</option>
+            <option value="system">system</option>
+          </select>
+          <button class="btn sm" onclick="loadLogs()">刷新</button>
+        </div>
+        <div class="log-view" id="log-view"></div>
+      </div>
+    </div>
+
+    <!-- 设置 -->
+    <div class="page" id="page-settings">
+      <h1>设置</h1>
+      <div class="sub">保存后立即生效，部分项需重新触发同步/刮削</div>
+      <div class="panel">
+        <h2>目录</h2>
+        <div class="form-row">
+          <div><label>源目录（逗号分隔）</label><input id="cfg-source_dirs" placeholder="/vol1/downloads/music"></div>
+          <div><label>媒体库目录</label><input id="cfg-library_dir" placeholder="/vol1/media/music"></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>命名规则</h2>
+        <div class="form-row">
+          <div><label>歌手目录</label><input id="cfg-naming.artist"></div>
+          <div><label>专辑目录</label><input id="cfg-naming.album"></div>
+        </div>
+        <div><label>曲目文件名</label><input id="cfg-naming.track"></div>
+      </div>
+      <div class="panel">
+        <h2>刮削</h2>
+        <div class="form-row">
+          <div><label>数据源优先级（逗号分隔）</label><input id="cfg-scrape.providers" placeholder="musicbrainz,netease,qq"></div>
+          <div><label>扫描间隔（分钟，0=禁用）</label><input id="cfg-hardlink.scan_interval_minutes" type="number"></div>
+        </div>
+        <div class="form-row">
+          <div><label>网易云 Cookie（可选）</label><input id="cfg-scrape.netease_cookie" placeholder="MUSIC_U=..."></div>
+          <div><label>QQ 音乐 Cookie（可选）</label><input id="cfg-scrape.qq_cookie"></div>
+        </div>
+        <div><label>同步删除（源删除后删除硬链接）</label>
+          <select id="cfg-hardlink.sync_delete">
+            <option value="false">关闭</option><option value="true">开启</option>
+          </select></div>
+      </div>
+      <div class="panel">
+        <h2>外置资源</h2>
+        <div class="form-row">
+          <div><label>封面文件名</label><input id="cfg-assets.cover_name"></div>
+          <div><label>封面最小分辨率</label><input id="cfg-assets.cover_min_size" type="number"></div>
+        </div>
+        <div><label>双语歌词</label>
+          <select id="cfg-scrape.bilingual_lyrics">
+            <option value="true">开启</option><option value="false">关闭</option>
+          </select></div>
+      </div>
+      <div class="panel">
+        <button class="btn primary" onclick="saveConfig()">保存配置</button>
+        <span id="cfg-msg" class="muted"></span>
+      </div>
+    </div>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+
+async function api(path, opts={}){
+  const res = await fetch('/api'+path, {
+    headers:{'Content-Type':'application/json'},
+    ...opts
+  });
+  const data = await res.json();
+  if(!res.ok) throw new Error(data.message || data.detail || '请求失败');
+  return data;
+}
+function toast(msg, ok=true){
+  const t = $('#toast'); t.textContent = msg;
+  t.className = 'toast show ' + (ok?'ok':'err');
+  setTimeout(()=>t.className='toast', 2500);
+}
+
+// 导航
+$$('.nav a').forEach(a=>{
+  a.onclick = e=>{
+    e.preventDefault();
+    $$('.nav a').forEach(x=>x.classList.remove('active'));
+    a.classList.add('active');
+    $$('.page').forEach(p=>p.classList.remove('active'));
+    $('#page-'+a.dataset.page).classList.add('active');
+    // 按页面加载数据
+    if(a.dataset.page==='dashboard') loadStats();
+    if(a.dataset.page==='library') loadTree();
+    if(a.dataset.page==='hardlink') loadHardlinks();
+    if(a.dataset.page==='scrape') loadScrapes();
+    if(a.dataset.page==='sources') loadSources();
+    if(a.dataset.page==='logs') loadLogs();
+    if(a.dataset.page==='settings') loadConfigForm();
+  };
+});
+
+async function loadStats(){
+  try{
+    const d = await api('/stats');
+    $('#stat-hardlinks').textContent = d.data.hardlinks;
+    $('#stat-scraped').textContent = d.data.scraped;
+    $('#stat-pending').textContent = d.data.pending;
+    $('#stat-failed').textContent = d.data.failed;
+    const c = await api('/config');
+    const cfg = c.data;
+    $('#config-summary').innerHTML =
+      `源目录: <b>${(cfg.source_dirs||[]).join(', ')||'未配置'}</b> · `+
+      `媒体库: <b>${cfg.library_dir||'未配置'}</b> · `+
+      `数据源: <b>${(cfg.scrape.providers||[]).join(' → ')}</b>`;
+  }catch(e){ toast(e.message, false); }
+}
+
+function buildTree(nodes, root=false){
+  let html = '';
+  nodes.forEach(n=>{
+    if(n.type==='artist'){
+      html += `<div class="dir open" data-p="${n.path}" onclick="toggleNode(this)">🎤 ${n.name}</div>`;
+      if(n.children) html += `<div class="children">`+buildTree(n.children)+`</div>`;
+    } else if(n.type==='album'){
+      html += `<div class="dir open" data-p="${n.path}" onclick="toggleNode(this)">💿 ${n.name}</div>`;
+      if(n.children) html += `<div class="children">`+buildTree(n.children)+`</div>`;
+    } else {
+      const icon = n.type==='asset' ? '🖼' : '♪';
+      html += `<div class="file ${n.type}">${icon} ${n.name}</div>`;
+    }
+  });
+  return html;
+}
+function toggleNode(el){
+  el.classList.toggle('open');
+  const next = el.nextElementSibling;
+  if(next && next.classList.contains('children'))
+    next.style.display = el.classList.contains('open')?'':'none';
+}
+async function loadTree(){
+  try{
+    const d = await api('/library/tree');
+    $('#tree').innerHTML = d.data.length ? buildTree(d.data) : '<span class="muted">媒体库为空或未配置</span>';
+  }catch(e){ toast(e.message, false); }
+}
+
+async function loadHardlinks(){
+  const s = $('#hl-status-filter').value;
+  try{
+    const d = await api('/hardlink/list'+(s?`?status=${s}`:''));
+    const rows = d.data;
+    $('#hl-table tbody').innerHTML = rows.map(r=>`
+      <tr><td>${r.source_path}</td><td>${r.target_path}</td><td>${r.inode}</td>
+      <td><span class="badge ${r.status}">${r.status}</span></td><td>${r.created_at}</td></tr>
+    `).join('') || '<tr><td colspan="5" class="muted">暂无数据</td></tr>';
+  }catch(e){ toast(e.message, false); }
+}
+
+async function loadScrapes(){
+  const s = $('#sc-status-filter').value;
+  try{
+    const d = await api('/scrape/list'+(s?`?status=${s}`:''));
+    const rows = d.data;
+    $('#sc-table tbody').innerHTML = rows.map(r=>`
+      <tr>
+        <td title="${r.target_path}">${r.target_path.split('/').pop()}</td>
+        <td>${r.provider||'-'}</td>
+        <td>${r.match_score?r.match_score.toFixed(2):'-'}</td>
+        <td>${r.cover_path?'✅':'-'}</td>
+        <td>${r.lyrics_path?'✅':'-'}</td>
+        <td><span class="badge ${r.status}">${r.status}</span></td>
+        <td><button class="btn sm" onclick="doScrapeTrack('${r.target_path.replace(/'/g,"\\'")}',true)">重刮</button></td>
+      </tr>
+    `).join('') || '<tr><td colspan="7" class="muted">暂无数据</td></tr>';
+  }catch(e){ toast(e.message, false); }
+}
+
+async function loadLogs(){
+  const lv = $('#log-level').value, cat = $('#log-cat').value;
+  const q = new URLSearchParams();
+  if(lv) q.set('level', lv);
+  if(cat) q.set('category', cat);
+  try{
+    const d = await api('/log/list?'+q.toString());
+    $('#log-view').innerHTML = d.data.map(r=>`
+      <div class="line ${r.level}"><span class="muted">[${r.timestamp}]</span>
+      <b>${r.category}</b> ${r.message}</div>
+    `).join('') || '<div class="muted">暂无日志</div>';
+  }catch(e){ toast(e.message, false); }
+}
+
+async function loadConfigForm(){
+  try{
+    const d = await api('/config');
+    const cfg = d.data;
+    const map = {
+      'cfg-source_dirs': (cfg.source_dirs||[]).join(','),
+      'cfg-library_dir': cfg.library_dir||'',
+      'cfg-naming.artist': cfg.naming.artist,
+      'cfg-naming.album': cfg.naming.album,
+      'cfg-naming.track': cfg.naming.track,
+      'cfg-scrape.providers': (cfg.scrape.providers||[]).join(','),
+      'cfg-hardlink.scan_interval_minutes': cfg.hardlink.scan_interval_minutes,
+      'cfg-scrape.netease_cookie': cfg.scrape.netease_cookie,
+      'cfg-scrape.qq_cookie': cfg.scrape.qq_cookie,
+      'cfg-hardlink.sync_delete': String(cfg.hardlink.sync_delete),
+      'cfg-assets.cover_name': cfg.assets.cover_name,
+      'cfg-assets.cover_min_size': cfg.assets.cover_min_size,
+      'cfg-scrape.bilingual_lyrics': String(cfg.scrape.bilingual_lyrics),
+    };
+    for(const [id,val] of Object.entries(map)){
+      const el = document.getElementById(id);
+      if(el) el.value = val;
+    }
+  }catch(e){ toast(e.message, false); }
+}
+
+async function saveConfig(){
+  const get = id => document.getElementById(id).value;
+  const body = {
+    source_dirs: get('cfg-source_dirs').split(',').map(s=>s.trim()).filter(Boolean),
+    library_dir: get('cfg-library_dir'),
+    naming: {
+      artist: get('cfg-naming.artist'),
+      album: get('cfg-naming.album'),
+      track: get('cfg-naming.track'),
+    },
+    scrape: {
+      providers: get('cfg-scrape.providers').split(',').map(s=>s.trim()).filter(Boolean),
+      netease_cookie: get('cfg-scrape.netease_cookie'),
+      qq_cookie: get('cfg-scrape.qq_cookie'),
+      bilingual_lyrics: get('cfg-scrape.bilingual_lyrics')==='true',
+    },
+    hardlink: {
+      scan_interval_minutes: parseInt(get('cfg-hardlink.scan_interval_minutes'))||0,
+      sync_delete: get('cfg-hardlink.sync_delete')==='true',
+    },
+    assets: {
+      cover_name: get('cfg-assets.cover_name'),
+      cover_min_size: parseInt(get('cfg-assets.cover_min_size'))||800,
+    },
+  };
+  try{
+    await api('/config', {method:'PUT', body:JSON.stringify({config:body})});
+    $('#cfg-msg').textContent = '已保存 ✓';
+    toast('配置已保存');
+  }catch(e){ toast(e.message, false); }
+}
+
+async function doSync(dryRun){
+  toast(dryRun?'生成预览...':'同步中...');
+  try{
+    const d = await api(`/hardlink/sync?dry_run=${dryRun}`, {method:'POST'});
+    if(dryRun){
+      const acts = d.data.actions;
+      alert('Dry Run 预览：\n' + acts.map(a=>`[${a.action}] ${a.reason}`).join('\n') || '无操作');
+    } else {
+      const r = d.data.result;
+      toast(`同步完成：新建${r.created} 重命名${r.renamed} 重建${r.rebuilt} 删除${r.deleted} 跳过${r.skipped}`);
+    }
+    loadStats(); loadHardlinks();
+  }catch(e){ toast(e.message, false); }
+}
+
+async function doRebuild(dryRun){
+  if(!confirm('确认批量重建所有硬链接？')) return;
+  try{
+    const d = await api(`/hardlink/rebuild?dry_run=${dryRun}`, {method:'POST'});
+    toast('重建完成');
+    loadHardlinks();
+  }catch(e){ toast(e.message, false); }
+}
+
+async function doCleanup(dryRun){
+  try{
+    const d = await api(`/hardlink/cleanup?dry_run=${dryRun}`, {method:'POST'});
+    toast(`清理完成：${d.data.length} 项`);
+    loadHardlinks();
+  }catch(e){ toast(e.message, false); }
+}
+
+async function doScrapeAll(force){
+  toast('刮削中，请稍候...');
+  try{
+    const d = await api(`/scrape/all?force=${force}`, {method:'POST'});
+    toast(`刮削完成：成功${d.data.done} 失败${d.data.failed} 跳过${d.data.skipped}`);
+    loadStats(); loadScrapes();
+  }catch(e){ toast(e.message, false); }
+}
+
+async function doScrapeTrack(targetPath, force){
+  toast('刮削中...');
+  try{
+    const d = await api(`/scrape/track?target_path=${encodeURIComponent(targetPath)}&force=${force}`, {method:'POST'});
+    toast(`刮削${d.data.status==='done'?'成功':'失败'} (${d.data.provider||'-'})`, d.data.status==='done');
+    loadScrapes();
+  }catch(e){ toast(e.message, false); }
+}
+
+// ---- 洛雪音源 ----
+async function loadSources(){
+  try{
+    const d = await api('/source/list');
+    const rows = d.data;
+    $('#src-table tbody').innerHTML = rows.map(r=>`
+      <tr><td>${r.name}</td><td>${(r.size/1024).toFixed(1)} KB</td>
+      <td><button class="btn sm danger" onclick="deleteSource('${r.name}')">删除</button></td></tr>
+    `).join('') || '<tr><td colspan="3" class="muted">暂无音源，请导入</td></tr>';
+    // 音源 key 状态
+    const s = await api('/source/status');
+    const keys = s.data || [];
+    $('#src-keys').innerHTML = keys.length
+      ? keys.map(k=>`<span class="badge active">${k}</span>`).join(' ')
+      : '<span class="muted">无（请导入音源并重载）</span>';
+  }catch(e){ toast(e.message, false); }
+}
+
+async function uploadSource(){
+  const f = $('#src-file').files[0];
+  if(!f) return;
+  const fd = new FormData();
+  fd.append('file', f);
+  try{
+    const res = await fetch('/api/source/upload', {method:'POST', body:fd});
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.detail||data.message);
+    toast(data.message);
+    $('#src-file').value='';
+    loadSources();
+  }catch(e){ toast(e.message, false); }
+}
+
+async function importSource(){
+  const url = $('#src-url').value.trim();
+  if(!url){ toast('请输入音源 URL', false); return; }
+  toast('下载导入中...');
+  try{
+    const d = await api('/source/import', {method:'POST', body:JSON.stringify({url})});
+    toast(d.message);
+    $('#src-url').value='';
+    loadSources();
+  }catch(e){ toast(e.message, false); }
+}
+
+async function deleteSource(name){
+  if(!confirm(`确认删除音源 ${name}？`)) return;
+  try{
+    const d = await api('/source/'+encodeURIComponent(name), {method:'DELETE'});
+    toast(d.message);
+    loadSources();
+  }catch(e){ toast(e.message, false); }
+}
+
+async function reloadSources(){
+  toast('重载中...');
+  try{
+    await api('/source/reload', {method:'POST'});
+    toast('已重载音源');
+    loadSources();
+  }catch(e){ toast(e.message, false); }
+}
+
+// 初始化
+loadStats();
+</script>
+</body>
+</html>

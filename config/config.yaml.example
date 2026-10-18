@@ -1,0 +1,39 @@
+# 音乐库硬链接刮削工具配置模板
+# 复制为 config.yaml 使用，或用环境变量 MUSIC_ 前缀覆盖
+
+source_dirs: []          # 源目录列表（硬链接来源，只读）
+library_dir: ""          # 媒体库根目录（硬链接目标）
+
+naming:
+  artist: "{artist}"
+  album: "{album} ({year})"
+  track: "{track:02d} - {title}"
+  various_artists: "群星"
+
+hardlink:
+  audio_extensions: [".mp3", ".flac", ".wav", ".m4a", ".aac", ".alac", ".ogg", ".ape", ".opus", ".wma", ".aiff", ".dsf", ".dff", ".tak", ".wv", ".tta"]
+  sync_delete: false
+  rebuild_on_inode_change: true
+  scan_interval_minutes: 30
+
+scrape:
+  enabled: true
+  providers: ["musicbrainz", "netease", "qq"]
+  netease_cookie: ""
+  qq_cookie: ""
+  language: "zh"
+  bilingual_lyrics: true
+  timeout_seconds: 20
+
+assets:
+  cover_name: "cover.jpg"
+  cover_aliases: ["folder.jpg", "cover.jpg"]
+  cover_min_size: 800
+  lyrics_ext: ".lrc"
+  generate_nfo: true
+  album_nfo_name: "album.nfo"
+  artist_nfo_name: "artist.nfo"
+
+server:
+  host: "0.0.0.0"
+  port: 2691
