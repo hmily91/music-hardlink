@@ -255,12 +255,12 @@ def _reload_bridge():
 
 # ---------- 搜索与下载 ----------
 @router.get("/search")
-async def search_music(keyword: str, limit: int = 20):
-    """搜索音乐，返回歌曲列表。"""
-    results = await search.search_songs(keyword, limit=limit)
+async def search_music(keyword: str, limit: int = 20, source: str = ""):
+    """搜索音乐，返回歌曲列表。source 可选曲库（tx/kw/wy/kg/mg）。"""
+    results = await search.search_songs(keyword, limit=limit, source=source)
     return {"data": [
         {
-            "id": s.id, "title": s.title, "artist": s.artist,
+            "id": s.id, "mid": s.mid, "title": s.title, "artist": s.artist,
             "album": s.album, "duration": s.duration,
             "source": s.source, "cover_url": s.cover_url,
         }
@@ -268,10 +268,22 @@ async def search_music(keyword: str, limit: int = 20):
     ]}
 
 
+@router.get("/search/sources")
+def search_sources():
+    """返回可用曲库列表。"""
+    return {"data": [
+        {"key": "tx", "name": "QQ音乐"},
+        {"key": "kw", "name": "酷我音乐"},
+        {"key": "wy", "name": "网易云音乐"},
+        {"key": "kg", "name": "酷狗音乐"},
+        {"key": "mg", "name": "咪咕音乐"},
+    ]}
+
+
 @router.post("/download")
-async def download_music(keyword: str, song_id: str):
+async def download_music(keyword: str, song_id: str, source: str = ""):
     """下载单曲到源目录，并自动触发硬链接同步 + 刮削。"""
-    result = await search.search_and_download(keyword, song_id)
+    result = await search.search_and_download(keyword, song_id, source=source)
     if not result.get("success"):
         return {"success": False, "message": result.get("message", "下载失败")}
 

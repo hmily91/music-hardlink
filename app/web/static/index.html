@@ -137,6 +137,13 @@ tr:hover td{background:var(--panel2)}
       <div class="sub">搜索音乐 → 下载到源目录 → 自动硬链接 → 自动外置刮削</div>
       <div class="panel">
         <div class="toolbar">
+          <select id="search-source" style="width:auto;margin-bottom:0">
+            <option value="tx">QQ音乐</option>
+            <option value="kw">酷我音乐</option>
+            <option value="wy">网易云音乐</option>
+            <option value="kg">酷狗音乐</option>
+            <option value="mg">咪咕音乐</option>
+          </select>
           <input id="search-kw" placeholder="输入歌名 / 歌手" style="flex:1;margin-bottom:0"
                  onkeydown="if(event.key==='Enter')doSearch()">
           <button class="btn primary" onclick="doSearch()">搜索</button>
@@ -308,6 +315,31 @@ tr:hover td{background:var(--panel2)}
           </select></div>
       </div>
       <div class="panel">
+        <h2>音源 API（搜索下载用）</h2>
+        <div class="sub">填写你的聚合音源中转 API 信息，用于搜索和下载（如 ikun 音源）</div>
+        <div class="form-row">
+          <div><label>API 地址</label><input id="cfg-scrape.api_url" placeholder="https://c.wwwweb.top"></div>
+          <div><label>API Key</label><input id="cfg-scrape.api_key" placeholder="IKM-..."></div>
+        </div>
+        <div class="form-row">
+          <div><label>取链接曲库</label>
+            <select id="cfg-scrape.api_source">
+              <option value="tx">QQ音乐</option>
+              <option value="kw">酷我音乐</option>
+              <option value="wy">网易云音乐</option>
+              <option value="kg">酷狗音乐</option>
+              <option value="mg">咪咕音乐</option>
+            </select></div>
+          <div><label>下载音质</label>
+            <select id="cfg-scrape.api_quality">
+              <option value="128k">128k</option>
+              <option value="320k">320k</option>
+              <option value="flac">flac 无损</option>
+              <option value="flac24bit">flac 24bit</option>
+            </select></div>
+        </div>
+      </div>
+      <div class="panel">
         <h2>外置资源</h2>
         <div class="form-row">
           <div><label>封面文件名</label><input id="cfg-assets.cover_name"></div>
@@ -476,6 +508,10 @@ async function loadConfigForm(){
       'cfg-assets.cover_name': cfg.assets.cover_name,
       'cfg-assets.cover_min_size': cfg.assets.cover_min_size,
       'cfg-scrape.bilingual_lyrics': String(cfg.scrape.bilingual_lyrics),
+      'cfg-scrape.api_url': cfg.scrape.api_url||'',
+      'cfg-scrape.api_key': cfg.scrape.api_key||'',
+      'cfg-scrape.api_source': cfg.scrape.api_source||'tx',
+      'cfg-scrape.api_quality': cfg.scrape.api_quality||'128k',
     };
     for(const [id,val] of Object.entries(map)){
       const el = document.getElementById(id);
@@ -499,6 +535,10 @@ async function saveConfig(){
       netease_cookie: get('cfg-scrape.netease_cookie'),
       qq_cookie: get('cfg-scrape.qq_cookie'),
       bilingual_lyrics: get('cfg-scrape.bilingual_lyrics')==='true',
+      api_url: get('cfg-scrape.api_url'),
+      api_key: get('cfg-scrape.api_key'),
+      api_source: get('cfg-scrape.api_source'),
+      api_quality: get('cfg-scrape.api_quality'),
     },
     hardlink: {
       scan_interval_minutes: parseInt(get('cfg-hardlink.scan_interval_minutes'))||0,
@@ -633,9 +673,10 @@ async function reloadSources(){
 async function doSearch(){
   const kw = $('#search-kw').value.trim();
   if(!kw){ toast('请输入关键词', false); return; }
+  const src = $('#search-source').value;
   toast('搜索中...');
   try{
-    const d = await api('/search?keyword='+encodeURIComponent(kw));
+    const d = await api('/search?keyword='+encodeURIComponent(kw)+'&source='+src);
     const rows = d.data;
     $('#search-table tbody').innerHTML = rows.map((r,i)=>`
       <tr>
@@ -644,7 +685,7 @@ async function doSearch(){
         <td>${r.artist||'-'}</td>
         <td>${r.album||'-'}</td>
         <td>${r.duration?formatDur(r.duration):'-'}</td>
-        <td><span class="badge info">${r.source}</span></td>
+        <td><span class="badge info">${r.source==='api'?$('#search-source').selectedOptions[0].text:r.source}</span></td>
         <td><button class="btn sm primary" onclick="doDownload('${encodeURIComponent(kw)}','${r.id}')">下载</button></td>
       </tr>
     `).join('') || '<tr><td colspan="7" class="muted">无结果</td></tr>';
@@ -657,7 +698,8 @@ function formatDur(s){
 async function doDownload(kw, songId){
   toast('下载中，请稍候...');
   try{
-    const d = await api('/download?keyword='+kw+'&song_id='+songId, {method:'POST'});
+    const src = $('#search-source').value;
+    const d = await api('/download?keyword='+kw+'&song_id='+songId+'&source='+src, {method:'POST'});
     if(d.success){
       toast('✅ '+d.message);
       // 刷新统计和媒体库

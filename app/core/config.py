@@ -53,6 +53,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "lx_enabled": True,            # 是否启用洛雪音源桥接（补齐歌词/封面）
         "lx_bridge_url": "http://127.0.0.1:2692",   # lx-bridge 地址
         "lx_source": "kw",             # 默认使用的洛雪音源 key（kw/kg/tx/wy/mg/local）
+        # 自定义音源中转 API（ikun 等聚合音源）
+        "api_url": "https://c.wwwweb.top",          # 中转 API 地址
+        "api_key": "",                 # API Key（用户音源的 key）
+        "api_source": "tx",            # 取链接时用的曲库 source（tx=QQ/kw=酷我/wy=网易云）
+        "api_quality": "128k",         # 下载音质
     },
 
     # 外置资源
