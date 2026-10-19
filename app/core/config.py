@@ -45,7 +45,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # 刮削数据源优先级
     "scrape": {
         "enabled": True,
-        "providers": ["musicbrainz", "netease", "qq"],   # 优先级顺序，自动 fallback
+        "providers": ["netease", "qq", "musicbrainz"],   # 优先级顺序，自动 fallback
         "netease_cookie": "",
         "qq_cookie": "",
         "language": "zh",              # 歌词语言偏好
