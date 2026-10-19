@@ -6,39 +6,21 @@ services:
     ports:
       - "2691:2691"
     volumes:
-      # 数据目录：数据库 + 配置 + 音源脚本。配置存在这里，重建容器不丢
       - /vol1/1000/docker/hardlink:/data
-      # 关键：源目录与媒体库必须在同一个 btrfs 子卷内才能硬链接。
-      # 飞牛每个「共享文件夹」是独立子卷，跨子卷硬链接会被内核拒绝（EXDEV），
-      # 即使 stat -c %d 设备号相同也一样。因此挂载整个 raw 共享文件夹，
-      # 媒体库放在它下面的 link 子目录。
       - /vol2/1000/music/raw:/music
     environment:
       - TZ=Asia/Shanghai
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:2691/api/health',timeout=3)"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
 
-# ---------------------------------------------------------------------------
-# 其余全部在 Web 界面「设置」页填写，保存在 /data/config.json，重启/重建不丢。
+# 启动后打开 http://192.168.31.3:2691 → 设置页填：
+#   源目录 = /music        媒体库目录 = /music/link
+#   中转音源 API（可选，官方直连失败才用）
+# 配置保存在 /data/config.json，重建容器不丢。
+# 不要加 MUSIC_ 开头的环境变量：优先级高于界面配置，会把界面改的值覆盖回去。
 #
-# 首次启动后打开 http://<NAS-IP>:2691 → 设置，填这三项即可：
-#   源目录      /music
-#   媒体库目录  /music/link
-#   中转音源 API Key（可选，官方直连失败时才用到，只存 NAS 本地）
-#
-# 注意：不要在 compose 里加 MUSIC_ 开头的环境变量 —— 环境变量优先级高于
-# 界面保存的配置，会把界面里改的值覆盖回去。
-# ---------------------------------------------------------------------------
-
-# 首次部署请先确认目录并迁移旧媒体库：
-# 1) 确认可硬链接（应输出「硬链接成功」）：
-#    sudo mkdir -p /vol2/1000/music/raw/link
-#    sudo ln "/vol2/1000/music/raw/<任一歌曲文件>" /vol2/1000/music/raw/link/_test \
-#      && echo "硬链接成功" && sudo rm /vol2/1000/music/raw/link/_test
-# 2) 迁移旧的独立共享文件夹 link（确认无误后可删旧目录）：
-#    sudo cp -a /vol2/1000/music/link/. /vol2/1000/music/raw/link/
-# 3) docker compose up -d，然后 Web 点「全量同步」—— 此时为真正的零拷贝硬链接
+# 首次部署先验证硬链接（应输出「硬链接成功」）：
+#   sudo mkdir -p /vol2/1000/music/raw/link
+#   sudo ln "/vol2/1000/music/raw/<任一歌曲>" /vol2/1000/music/raw/link/_test \
+#     && echo "硬链接成功" && sudo rm /vol2/1000/music/raw/link/_test
+# 然后把旧媒体库迁移进来：
+#   sudo cp -a /vol2/1000/music/link/. /vol2/1000/music/raw/link/
+# 最后 Web 点「全量同步」，即为真正的零拷贝硬链接。
