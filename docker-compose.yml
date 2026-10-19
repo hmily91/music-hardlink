@@ -6,23 +6,19 @@ services:
     ports:
       - "2691:2691"
     volumes:
-      - ./data:/data                       # 数据目录（数据库/缓存/音源脚本）
-      - /path/to/source:/source            # 源目录（下载目标，须读写；硬链接绝不修改文件内容）
-      - /path/to/library:/library          # 媒体库目录（硬链接目标，须与源同文件系统）
+      - ./data:/data                       # 数据目录：数据库 + 配置 + 音源脚本
+      # 源目录与媒体库必须在同一文件系统（同一 btrfs 子卷）内，否则无法硬链接
+      - /path/to/source:/source            # 源目录（下载落盘处，须读写）
+      - /path/to/library:/library          # 媒体库目录（硬链接目标）
     environment:
       - TZ=Asia/Shanghai
-      # 可选：直接通过环境变量配置（也可在 Web 界面配置）
-      - MUSIC_SOURCE_DIRS=/source
-      - MUSIC_LIBRARY_DIR=/library
-      - MUSIC_DATA_DIR=/data
-      # 音源中转 API（搜索下载用，如 ikun 音源）
-      - MUSIC_SCRAPE__API_URL=https://c.wwwweb.top
-      - MUSIC_SCRAPE__API_KEY=IKM-P82900001-SrUuI7iVi5Kfayhz-Yb
-      - MUSIC_SCRAPE__API_SOURCE=tx
-      - MUSIC_SCRAPE__API_QUALITY=128k
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:2691/api/health',timeout=3)"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 15s
+
+# 目录与音源等配置请到 Web 界面「设置」页填写（保存到 ./data/config.json）。
+# 不要在 compose 里加 MUSIC_ 开头的环境变量：其优先级高于界面保存的配置，
+# 会导致界面里改的值在重启后被覆盖回去。密钥也只存在本地，不要写进本文件。

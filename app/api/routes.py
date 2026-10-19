@@ -40,9 +40,33 @@ def get_config():
 @router.put("/config")
 def update_config(body: ConfigBody):
     # 深度合并：嵌套字典只覆盖提供的键，避免丢掉 audio_extensions 等未提交字段
+    _sanitize(body.config)
     config.merge(body.config)
     config.save()
     return {"success": True, "message": "配置已保存"}
+
+
+def _sanitize(cfg: dict) -> None:
+    """保存前校正关键字段，避免非法值导致刮削/搜索异常。"""
+    scrape = cfg.get("scrape")
+    if not isinstance(scrape, dict):
+        return
+    # 置信度必须在 0~1
+    mc = scrape.get("min_confidence")
+    if mc is not None:
+        try:
+            scrape["min_confidence"] = min(1.0, max(0.0, float(mc)))
+        except (TypeError, ValueError):
+            scrape["min_confidence"] = 0.6
+    # 列表字段容错：字符串按逗号切分
+    for key in ("providers", "search_platforms", "ad_keywords"):
+        v = scrape.get(key)
+        if isinstance(v, str):
+            scrape[key] = [s.strip() for s in v.split(",") if s.strip()]
+        elif v is not None and not isinstance(v, list):
+            scrape[key] = []
+    if isinstance(cfg.get("source_dirs"), str):
+        cfg["source_dirs"] = [s.strip() for s in cfg["source_dirs"].split(",") if s.strip()]
 
 
 # ---------- 硬链接 ----------
