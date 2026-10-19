@@ -1,0 +1,27 @@
+services:
+  music-hardlink:
+    image: hamily/music-hardlink:latest
+    container_name: music-hardlink
+    restart: unless-stopped
+    ports:
+      - "2691:2691"
+    volumes:
+      - /vol1/1000/docker/hardlink:/data          # 数据目录（数据库/缓存/音源脚本）
+      - /vol2/1000/music/raw:/source              # 源目录（下载目标，读写）
+      - /vol2/1000/music/link:/library            # 媒体库目录（硬链接目标）
+    environment:
+      - TZ=Asia/Shanghai
+      - MUSIC_SOURCE_DIRS=/source
+      - MUSIC_LIBRARY_DIR=/library
+      - MUSIC_DATA_DIR=/data
+      # 音源中转 API（搜索下载用，ikun 音源）
+      - MUSIC_SCRAPE__API_URL=https://c.wwwweb.top
+      - MUSIC_SCRAPE__API_KEY=IKM-P82900001-SrUuI7iVi5Kfayhz-Yb
+      - MUSIC_SCRAPE__API_SOURCE=tx
+      - MUSIC_SCRAPE__API_QUALITY=128k
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:2691/api/health',timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

@@ -39,8 +39,8 @@ def get_config():
 
 @router.put("/config")
 def update_config(body: ConfigBody):
-    for key, value in body.config.items():
-        config.set(key, value)
+    # 深度合并：嵌套字典只覆盖提供的键，避免丢掉 audio_extensions 等未提交字段
+    config.merge(body.config)
     config.save()
     return {"success": True, "message": "配置已保存"}
 
@@ -292,19 +292,27 @@ async def download_music(keyword: str, song_id: str, source: str = ""):
     try:
         sync_result, _ = hardlink.execute_sync(dry_run=False)
         get_db().add_log("info", "hardlink",
-                         f"下载后同步: 新建{sync_result.created} 重建{sync_result.rebuilt}")
+                         f"下载后同步: 新建{sync_result.created} 补录{sync_result.recorded} 重建{sync_result.rebuilt}")
     except Exception as e:  # noqa: BLE001
         logger.warning(f"下载后同步失败: {e}")
 
-    # 自动刮削（对新文件）
+    # 自动刮削：优先查库，查不到直接按命名规则算目标路径
     if path:
-        # 找到对应的硬链接目标并刮削
         try:
             from app.services import scraper as _scraper
-            # 同步后，硬链接目标在 /library 下，按源路径查目标
+            target = None
             row = get_db().get_hardlink_by_source(path)
             if row:
-                await _scraper.scrape_track(row["target_path"])
+                target = row["target_path"]
+            else:
+                built = hardlink.build_target_path(Path(path))
+                if built and built.exists():
+                    target = str(built)
+            if target:
+                scrape_res = await _scraper.scrape_track(target, force=True)
+                logger.info(f"下载后刮削: {target} -> {scrape_res.status}")
+            else:
+                logger.warning(f"下载后未找到硬链接目标，跳过刮削: {path}")
         except Exception as e:  # noqa: BLE001
             logger.warning(f"下载后刮削失败: {e}")
 

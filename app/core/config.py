@@ -39,6 +39,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "sync_delete": False,          # 源文件删除后是否同步删除硬链接
         "rebuild_on_inode_change": True,  # inode 不一致时自动重建
         "scan_interval_minutes": 30,   # 增量扫描间隔（分钟）
+        "copy_fallback": True,         # 跨文件系统无法硬链接时降级为复制（源文件仍只读）
     },
 
     # 刮削数据源优先级
@@ -136,6 +137,12 @@ class Config:
 
     def set(self, dotted: str, value: Any) -> None:
         _set_nested(self._config, dotted.split("."), value)
+
+    def merge(self, override: dict) -> None:
+        """深度合并配置（嵌套字典只覆盖提供的键，不整体替换）。"""
+        _deep_merge(self._config, override)
+        for dotted in ("source_dirs", "scrape.providers"):
+            _normalize_list(self._config, dotted)
 
     def as_dict(self) -> dict[str, Any]:
         return _deep_copy(self._config)

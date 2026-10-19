@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -33,7 +34,23 @@ class SyncResult:
     rebuilt: int = 0
     deleted: int = 0
     skipped: int = 0
+    recorded: int = 0   # 补录已有硬链接（数据库缺记录）
     errors: list[str] = field(default_factory=list)
+
+
+def _link_or_copy(src: Path, target: Path) -> str:
+    """优先硬链接；跨设备（EXDEV）时按配置降级为复制。
+
+    返回 'link' 或 'copy'。源文件在任何情况下都只读不写。
+    """
+    try:
+        os.link(src, target)
+        return "link"
+    except OSError as e:
+        if e.errno == 18 and config.get("hardlink.copy_fallback", True):  # EXDEV
+            shutil.copy2(src, target)
+            return "copy"
+        raise
 
 
 def _is_audio(path: Path) -> bool:
@@ -74,9 +91,13 @@ def build_target_path(src: Path) -> Optional[Path]:
     album_dir = naming.get("album", "{album} ({year})").format(
         album=album, year=info.year or "", artist=artist
     )
-    track_name = naming.get("track", "{track:02d} - {title}").format(
-        track=track, title=title, artist=artist, album=album
-    )
+    if info.track and info.track > 0:
+        track_name = naming.get("track", "{track:02d} - {title}").format(
+            track=info.track, title=title, artist=artist, album=album
+        )
+    else:
+        # 无曲目号时直接用歌曲名，避免出现 "00 - " 前缀
+        track_name = title
     if not track_name.endswith(src.suffix.lower()):
         track_name += src.suffix.lower()
 
@@ -187,14 +208,15 @@ def execute_sync(dry_run: bool = False, source_dirs: list[str] | None = None) ->
                 if a.action == "rebuild_link" and target.exists():
                     target.unlink()  # 删除失效链接（只删链接，不动源数据）
                 target.parent.mkdir(parents=True, exist_ok=True)
-                os.link(src, target)
+                mode = _link_or_copy(src, target)
                 st = src.stat()
-                db.upsert_hardlink(str(src), str(target), st.st_ino, st.st_size)
+                db.upsert_hardlink(str(src), str(target), st.st_ino if mode == "link" else 0, st.st_size)
                 if a.action == "rebuild_link":
                     result.rebuilt += 1
                 else:
                     result.created += 1
-                db.add_log("info", "hardlink", f"{a.action}: {src.name} -> {target}")
+                db.add_log("info", "hardlink",
+                           f"{a.action}({mode}): {src.name} -> {target}")
             elif a.action == "rename_link":
                 old_target = Path(db.get_hardlink_by_source(str(src))["target_path"])
                 if old_target.exists() and old_target != target:
@@ -212,6 +234,17 @@ def execute_sync(dry_run: bool = False, source_dirs: list[str] | None = None) ->
                 result.deleted += 1
                 db.add_log("info", "hardlink", f"delete_link: {a.target}")
             else:
+                # none：硬链接已存在。若数据库缺记录（如用户手动建的链接），补录，
+                # 否则统计与刮削会漏掉这些文件。
+                if db.get_hardlink_by_target(a.target) is None and target.exists():
+                    try:
+                        st = src.stat()
+                        if _inode(src) == _inode(target):
+                            db.upsert_hardlink(str(src), str(target), st.st_ino, st.st_size)
+                            result.recorded += 1
+                            db.add_log("info", "hardlink", f"补录已有硬链接: {target}")
+                    except OSError:
+                        pass
                 result.skipped += 1
         except Exception as e:  # noqa: BLE001
             result.errors.append(f"{a.source}: {e}")
