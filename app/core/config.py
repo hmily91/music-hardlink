@@ -133,7 +133,14 @@ class Config:
                 _set_nested(cfg, path, _coerce(value))
 
         # 4) 规范化：列表类型字段统一转为 list，避免前端 .join() 报错
-        for dotted in ("source_dirs", "scrape.providers"):
+        #    环境变量只能传字符串（如 "tx,wy,kg"），不规范化会被逐字符遍历
+        for dotted in (
+            "source_dirs",
+            "scrape.providers",
+            "scrape.search_platforms",
+            "scrape.ad_keywords",
+            "assets.cover_aliases",
+        ):
             _normalize_list(cfg, dotted)
 
         self._config = cfg

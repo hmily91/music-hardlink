@@ -151,11 +151,16 @@ async def search_songs(keyword: str, limit: int = 20, source: str = "") -> list[
                 plats = [source]
             else:
                 plats = config.get("scrape.search_platforms", []) or []
+                # 防御：环境变量/旧配置可能给出逗号分隔字符串
+                if isinstance(plats, str):
+                    plats = [p.strip() for p in plats.split(",") if p.strip()]
                 single = config.get("scrape.search_platform", "")
                 if single:
                     plats = [single]
                 elif not plats:
                     plats = ["tx", "wy", "kg", "kw"]
+            if isinstance(plats, str):
+                plats = [plats]
             tracks: list = []
             for p in plats:
                 if p not in pf.CHANNEL_FACTORIES:

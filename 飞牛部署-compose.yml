@@ -7,21 +7,40 @@ services:
       - "2691:2691"
     volumes:
       - /vol1/1000/docker/hardlink:/data          # 数据目录（数据库/缓存/音源脚本）
-      - /vol2/1000/music/raw:/source              # 源目录（下载目标，读写）
-      - /vol2/1000/music/link:/library            # 媒体库目录（硬链接目标）
+      # 关键：raw 与 link 必须是同一个 btrfs 子卷内的父子目录才能硬链接。
+      # 飞牛每个「共享文件夹」是独立子卷，跨子卷硬链接会被内核拒绝（EXDEV），
+      # 即使 stat -c %d 设备号相同也一样。因此这里挂载整个 raw 共享文件夹，
+      # 媒体库放在其中的 link 子目录。
+      - /vol2/1000/music/raw:/music               # 挂载 raw 共享文件夹本体
     environment:
       - TZ=Asia/Shanghai
-      - MUSIC_SOURCE_DIRS=/source
-      - MUSIC_LIBRARY_DIR=/library
+      - MUSIC_SOURCE_DIRS=/music                  # 源目录 = raw 本体（下载落盘处）
+      - MUSIC_LIBRARY_DIR=/music/link             # 媒体库 = 同子卷内的子目录
       - MUSIC_DATA_DIR=/data
-      # 音源中转 API（搜索下载用，ikun 音源）
+      # 搜索：官方平台直连优先（wy/tx/kg/kw），失败自动回落中转音源
+      - MUSIC_SCRAPE__SEARCH_MODE=auto            # auto | official | relay
+      - MUSIC_SCRAPE__SEARCH_PLATFORMS=tx,wy,kg,kw
+      - MUSIC_SCRAPE__DOWNLOAD_QUALITY=highest    # 按阶梯 flac24bit>flac>320k>192k>128k 降级
+      # 刮削：网易云优先（封面/歌词覆盖最好），置信度阈值 0.6
+      - MUSIC_SCRAPE__PROVIDERS=netease,qq,kugou,kuwo,musicbrainz
+      - MUSIC_SCRAPE__MIN_CONFIDENCE=0.6
+      # 兜底：自定义音源中转 API（ikun）
       - MUSIC_SCRAPE__API_URL=https://c.wwwweb.top
       - MUSIC_SCRAPE__API_KEY=IKM-P82900001-SrUuI7iVi5Kfayhz-Yb
       - MUSIC_SCRAPE__API_SOURCE=tx
-      - MUSIC_SCRAPE__API_QUALITY=128k
+      - MUSIC_SCRAPE__API_QUALITY=flac
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:2691/api/health',timeout=3)"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 15s
+
+# ---- 首次部署请先确认目录并迁移旧媒体库 ----
+# 1) 确认可硬链接（应输出「硬链接成功」）：
+#    sudo mkdir -p /vol2/1000/music/raw/link
+#    sudo ln "/vol2/1000/music/raw/<任一歌曲文件>" /vol2/1000/music/raw/link/_test \
+#      && echo "硬链接成功" && sudo rm /vol2/1000/music/raw/link/_test
+# 2) 迁移旧的独立共享文件夹 link（确认无误后可删旧目录）：
+#    sudo cp -a /vol2/1000/music/link/. /vol2/1000/music/raw/link/
+# 3) docker compose up -d，然后 Web 点「全量同步」—— 此时为真正的零拷贝硬链接
