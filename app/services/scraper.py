@@ -1,6 +1,7 @@
 """刮削编排：多数据源 fallback + 本地缓存 + 外置资源生成。"""
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -139,17 +140,22 @@ async def scrape_track(target_path: str, force: bool = False) -> ScrapeResult:
         db.upsert_scrape(_record(result))
         return result
 
-    # 生成外置资源
+    # 生成外置资源（按 write_policy 决定是否覆盖）
     artist_dir = tgt.parent.parent
     try:
         if meta.cover_url:
-            cover = await assets.write_cover(tgt, meta.cover_url)
-            result.cover_path = str(cover) if cover else ""
-        lyrics = assets.write_lyrics(tgt, meta)
+            cover = await assets.write_cover(tgt, meta.cover_url, force=force)
+        elif config.get("assets.embedded_cover_fallback", True):
+            # 在线封面缺失时用内嵌封面兜底
+            cover = assets.extract_embedded_cover(tgt, tgt.parent)
+        else:
+            cover = None
+        result.cover_path = str(cover) if cover else ""
+        lyrics = assets.write_lyrics(tgt, meta, force=force)
         result.lyrics_path = str(lyrics) if lyrics else ""
-        album_nfo = assets.write_album_nfo(tgt, meta)
+        album_nfo = assets.write_album_nfo(tgt, meta, force=force)
         result.album_nfo_path = str(album_nfo) if album_nfo else ""
-        artist_nfo = assets.write_artist_nfo(artist_dir, meta.album_artist or meta.artist, meta)
+        artist_nfo = assets.write_artist_nfo(artist_dir, meta.album_artist or meta.artist, meta, force=force)
         result.artist_nfo_path = str(artist_nfo) if artist_nfo else ""
 
         result.status = "done"
@@ -183,11 +189,24 @@ def _record(r: ScrapeResult) -> dict:
 
 
 async def scrape_batch(target_paths: list[str], force: bool = False) -> BatchResult:
-    """批量刮削。"""
+    """批量刮削，有界并发（借鉴 MoviePilot TRANSFER_THREADS）。
+
+    并发度默认 3，既能缩短整批耗时，又不至于触发数据源限流。
+    """
     result = BatchResult(total=len(target_paths))
-    # 简单串行，避免触发限流；可优化为有界并发
-    for tp in target_paths:
-        r = await scrape_track(tp, force=force)
+    conc = max(1, int(config.get("scrape.batch_concurrency", 3)))
+    sem = asyncio.Semaphore(conc)
+
+    async def one(tp: str) -> ScrapeResult:
+        async with sem:
+            return await scrape_track(tp, force=force)
+
+    outcomes = await asyncio.gather(
+        *(one(tp) for tp in target_paths), return_exceptions=True
+    )
+    for tp, r in zip(target_paths, outcomes):
+        if isinstance(r, BaseException):
+            r = ScrapeResult(target_path=tp, status="failed", error=str(r))
         result.items.append(r)
         if r.status == "done":
             result.done += 1

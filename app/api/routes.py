@@ -58,6 +58,13 @@ def _sanitize(cfg: dict) -> None:
             scrape["min_confidence"] = min(1.0, max(0.0, float(mc)))
         except (TypeError, ValueError):
             scrape["min_confidence"] = 0.6
+    # 并发度必须是正整数
+    bc = scrape.get("batch_concurrency")
+    if bc is not None:
+        try:
+            scrape["batch_concurrency"] = max(1, min(10, int(bc)))
+        except (TypeError, ValueError):
+            scrape["batch_concurrency"] = 3
     # 列表字段容错：字符串按逗号切分
     for key in ("providers", "search_platforms", "ad_keywords"):
         v = scrape.get(key)

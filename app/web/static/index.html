@@ -307,8 +307,9 @@ tr:hover td{background:var(--panel2)}
         </div>
         <div class="form-row">
           <div><label>最低匹配置信度（0~1）</label><input id="cfg-scrape.min_confidence" type="number" step="0.05" min="0" max="1"></div>
-          <div><label></label><div class="sub" style="margin-top:6px">低于此值视为误匹配，不写入封面/歌词。调高更准，调低覆盖率更高</div></div>
+          <div><label>批量刮削并发度</label><input id="cfg-scrape.batch_concurrency" type="number" min="1" max="10"></div>
         </div>
+        <div class="sub" style="margin-top:6px">置信度低于阈值视为误匹配，不写入封面/歌词。调高更准，调低覆盖率更高</div>
         <div class="form-row">
           <div><label>网易云 Cookie（可选）</label><input id="cfg-scrape.netease_cookie" placeholder="MUSIC_U=..."></div>
           <div><label>QQ 音乐 Cookie（可选）</label><input id="cfg-scrape.qq_cookie"></div>
@@ -372,6 +373,27 @@ tr:hover td{background:var(--panel2)}
         <div class="form-row">
           <div><label>封面文件名</label><input id="cfg-assets.cover_name"></div>
           <div><label>封面最小分辨率</label><input id="cfg-assets.cover_min_size" type="number"></div>
+        </div>
+        <div class="form-row">
+          <div><label>封面写入策略</label>
+            <select id="cfg-scrape.write_policy.cover">
+              <option value="missingOnly">仅缺失时写入（推荐）</option>
+              <option value="upgrade">分辨率不足时升级</option>
+              <option value="always">总是覆盖</option>
+            </select></div>
+          <div><label>歌词写入策略</label>
+            <select id="cfg-scrape.write_policy.lyrics">
+              <option value="upgrade">更完整才覆盖（推荐）</option>
+              <option value="missingOnly">仅缺失时写入</option>
+              <option value="always">总是覆盖</option>
+            </select></div>
+        </div>
+        <div class="form-row">
+          <div><label>优先使用目录内已有封面</label>
+            <select id="cfg-assets.local_cover_enable">
+              <option value="true">开启</option><option value="false">关闭</option>
+            </select></div>
+          <div><label>封面图床代理（coverartarchive 不通时填）</label><input id="cfg-assets.cover_proxy" placeholder="留空使用官方地址"></div>
         </div>
         <div><label>双语歌词</label>
           <select id="cfg-scrape.bilingual_lyrics">
@@ -530,6 +552,11 @@ async function loadConfigForm(){
       'cfg-naming.track': cfg.naming.track,
       'cfg-scrape.providers': toArr(cfg.scrape.providers).join(','),
       'cfg-scrape.min_confidence': cfg.scrape.min_confidence ?? 0.6,
+      'cfg-scrape.batch_concurrency': cfg.scrape.batch_concurrency ?? 3,
+      'cfg-scrape.write_policy.cover': (cfg.scrape.write_policy||{}).cover || 'missingOnly',
+      'cfg-scrape.write_policy.lyrics': (cfg.scrape.write_policy||{}).lyrics || 'upgrade',
+      'cfg-assets.local_cover_enable': String(cfg.assets.local_cover_enable ?? true),
+      'cfg-assets.cover_proxy': cfg.assets.cover_proxy || '',
       'cfg-hardlink.scan_interval_minutes': cfg.hardlink.scan_interval_minutes,
       'cfg-scrape.netease_cookie': cfg.scrape.netease_cookie,
       'cfg-scrape.qq_cookie': cfg.scrape.qq_cookie,
@@ -570,6 +597,11 @@ async function saveConfig(){
       qq_cookie: get('cfg-scrape.qq_cookie'),
       bilingual_lyrics: get('cfg-scrape.bilingual_lyrics')==='true',
       min_confidence: mc,
+      batch_concurrency: Math.max(1, parseInt(get('cfg-scrape.batch_concurrency'))||3),
+      write_policy: {
+        cover: get('cfg-scrape.write_policy.cover'),
+        lyrics: get('cfg-scrape.write_policy.lyrics'),
+      },
       search_mode: get('cfg-scrape.search_mode'),
       search_platforms: get('cfg-scrape.search_platforms').split(',').map(s=>s.trim()).filter(Boolean),
       download_quality: get('cfg-scrape.download_quality'),
@@ -585,6 +617,8 @@ async function saveConfig(){
     assets: {
       cover_name: get('cfg-assets.cover_name'),
       cover_min_size: parseInt(get('cfg-assets.cover_min_size'))||800,
+      local_cover_enable: get('cfg-assets.local_cover_enable')==='true',
+      cover_proxy: get('cfg-assets.cover_proxy'),
     },
   };
   try{

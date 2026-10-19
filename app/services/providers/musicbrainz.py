@@ -6,6 +6,7 @@ from typing import Optional
 import httpx
 
 from app.core.audio import AudioInfo, TrackMetadata
+from app.core.config import config
 from app.core.logger import logger
 from app.services.providers.base import BaseProvider, match_album_score
 
@@ -62,26 +63,41 @@ class MusicBrainzProvider(BaseProvider):
                     meta.artist = best["artist-credit"][0].get("artist", {}).get("name", meta.artist)
                 if best.get("length"):
                     meta.duration = int(best["length"]) / 1000.0
-                # release 信息
-                if best.get("release-list"):
-                    rel = best["release-list"][0]
+                # release 信息：同一录音常有日版/台版/欧美版等多个发行版，
+                # 按配置的地区与字形优先级挑选，避免拿到繁体标题或冷门版本
+                rel = self._pick_release(best.get("release-list") or [])
+                if rel:
                     meta.album = rel.get("title", info.album)
                     date = rel.get("date", "")
                     if date:
                         meta.year = int(date[:4])
-                # 封面
-                if best.get("release-list") and best["release-list"][0].get("id"):
-                    rid = best["release-list"][0]["id"]
-                    caa = self._mb.get_release_group_by_id
-                    # 尝试通过 cover art archive
-                    cover = await self._fetch_cover(rid)
-                    if cover:
-                        meta.cover_url = cover
+                    if rel.get("id"):
+                        cover = await self._fetch_cover(rel["id"])
+                        if cover:
+                            meta.cover_url = cover
             meta.match_score = best_score
             return meta if best_score > 0.2 else None
         except Exception as e:  # noqa: BLE001
             logger.warning(f"MusicBrainz 搜索失败 {info.path.name}: {e}")
             return None
+
+    def _pick_release(self, releases: list) -> Optional[dict]:
+        """按发行地区 / 字形优先级挑选最合适的发行版。"""
+        if not releases:
+            return None
+        region_pri = [
+            str(c).upper() for c in (config.get("scrape.release_region_priority", []) or [])
+        ]
+        script_pri = list(config.get("scrape.release_script_priority", []) or [])
+
+        def rank(rel: dict) -> tuple:
+            country = str(rel.get("country") or "").upper()
+            script = str((rel.get("text-representation") or {}).get("script", "") or "")
+            r = region_pri.index(country) if country in region_pri else len(region_pri)
+            s = script_pri.index(script) if script and script in script_pri else len(script_pri)
+            return (r, s)
+
+        return sorted(releases, key=rank)[0]
 
     async def _fetch_cover(self, release_id: str) -> str:
         url = f"https://coverartarchive.org/release/{release_id}/front-500"

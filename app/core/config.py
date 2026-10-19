@@ -33,8 +33,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "hardlink": {
         "audio_extensions": [
             ".mp3", ".flac", ".wav", ".m4a", ".aac",
-            ".alac", ".ogg", ".ape", ".opus", ".wma",
-            ".aiff", ".dsf", ".dff", ".tak", ".wv", ".tta",
+            ".alac", ".ogg", ".oga", ".ape", ".opus", ".wma",
+            ".aiff", ".aifc", ".dsf", ".dff", ".tak", ".wv", ".tta",
+            ".mka", ".mpc", ".spx", ".amr", ".caf", ".adts",
+            ".mp1", ".mp2", ".mid", ".midi",
         ],
         "sync_delete": False,          # 源文件删除后是否同步删除硬链接
         "rebuild_on_inode_change": True,  # inode 不一致时自动重建
@@ -51,6 +53,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "language": "zh",              # 歌词语言偏好
         "bilingual_lyrics": True,      # 双语歌词
         "timeout_seconds": 20,
+        "batch_concurrency": 3,        # 批量刮削并发度（1=串行；过大易触发数据源限流）
         # 最低匹配置信度（0~1）：低于此值视为误匹配，不写入外置资源。
         # 调低可提升覆盖率但会增加错配风险；调高更保守。
         "min_confidence": 0.6,
@@ -62,6 +65,19 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "lx_enabled": True,            # 是否启用洛雪音源桥接（补齐歌词/封面）
         "lx_bridge_url": "http://127.0.0.1:2692",   # lx-bridge 地址
         "lx_source": "kw",             # 默认使用的洛雪音源 key（kw/kg/tx/wy/mg/local）
+        # 写盘策略（借鉴 MoviePilot ScrapingSwitchs）：避免重复刮削覆盖用户已有资源
+        #   missingOnly = 仅当资源缺失时写入（不覆盖、不重复下载）
+        #   upgrade     = 新资源更好时才覆盖（歌词更完整/带译文、封面分辨率更高）
+        #   always      = 总是覆盖
+        "write_policy": {
+            "cover": "missingOnly",
+            "lyrics": "upgrade",
+            "nfo": "missingOnly",
+        },
+        # MusicBrainz 同一录音常有多个发行版（日版/台版/欧美版），按地区与字形排序取最优，
+        # 避免匹配到繁体标题或冷门版本。ISO 3166-1 两位地区码 / ISO 15924 四位字形码
+        "release_region_priority": ["CN", "TW", "HK"],
+        "release_script_priority": ["Hans", "Hant", "Latn"],
         # 自定义音源中转 API（ikun 等聚合音源）
         "api_url": "",                  # 中转 API 地址（在 Web 界面填写，不进镜像/compose）
         "api_key": "",                 # API Key（用户音源的 key）
@@ -79,6 +95,17 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "cover_name": "cover.jpg",     # 封面名
         "cover_aliases": ["folder.jpg", "cover.jpg"],  # 别名
         "cover_min_size": 800,         # 封面最小分辨率
+        # 本地封面优先：目录内已存在封面则不再下载（按顺序匹配，大小写不敏感）
+        "local_cover_enable": True,
+        "cover_file_patterns": [
+            "cover.jpg", "cover.jpeg", "cover.png",
+            "folder.jpg", "folder.jpeg", "folder.png",
+            "front.jpg", "front.jpeg", "front.png",
+        ],
+        # 在线封面不可用时，从音频文件内嵌图片提取（只读取源文件，绝不写入）
+        "embedded_cover_fallback": True,
+        # 封面图床代理：coverartarchive.org 访问不畅时填镜像地址，如 https://xxx/caa
+        "cover_proxy": "",
         "lyrics_ext": ".lrc",          # 歌词扩展名
         "generate_nfo": True,          # 生成 NFO
         "album_nfo_name": "album.nfo",
