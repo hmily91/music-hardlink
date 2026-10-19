@@ -30,9 +30,10 @@ class SongResult:
     artist: str = ""
     album: str = ""
     duration: float = 0.0
-    source: str = ""           # 数据源: api / netease
+    source: str = ""           # 平台代号: wy / tx / kg / kw / api / netease
     cover_url: str = ""
     music_info: dict = field(default_factory=dict)
+    qualitys: list = field(default_factory=list)   # 真实可得音质档位（高->低）
 
 
 def _api_headers() -> dict:
@@ -124,55 +125,122 @@ async def _search_netease(keyword: str, limit: int) -> list[SongResult]:
 
 
 async def search_songs(keyword: str, limit: int = 20, source: str = "") -> list[SongResult]:
-    """搜索歌曲：优先自定义中转音源，fallback 网易云。"""
+    """搜索歌曲。
+
+    顺序（可通过 `scrape.search_mode` 调整）：
+      1. 官方平台直连搜索（wy / tx / kg / kw），带 media_mid 等取链关键字段
+      2. 自定义中转音源 API（如 ikun）
+      3. 网易云 fallback
+
+    `source` 可指定平台代号；留空则用配置 `scrape.search_platform`，
+    再留空则按 `scrape.search_platforms` 依次尝试。
+    """
     if not keyword.strip():
         return []
-    # 1) 自定义中转音源 API
+
+    mode = config.get("scrape.search_mode", "auto")
+
+    # 1) 官方平台直连
+    if mode in ("auto", "official"):
+        try:
+            from app.services import platforms as pf
+
+            if source and source in pf.CHANNEL_FACTORIES:
+                plats = [source]
+            elif source and source in ("wy", "tx", "kg", "kw"):
+                plats = [source]
+            else:
+                plats = config.get("scrape.search_platforms", []) or []
+                single = config.get("scrape.search_platform", "")
+                if single:
+                    plats = [single]
+                elif not plats:
+                    plats = ["tx", "wy", "kg", "kw"]
+            tracks: list = []
+            for p in plats:
+                if p not in pf.CHANNEL_FACTORIES:
+                    continue
+                tracks = await pf.search_platform(p, keyword, 1)
+                if tracks:
+                    break
+            if tracks:
+                return [t.as_song_result() for t in tracks[:limit]]
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"官方平台搜索失败，回落中转音源: {e}")
+
+    if mode == "official":
+        return []
+
+    # 2) 自定义中转音源 API
     results = await _search_api(keyword, limit, source)
     if results:
         return results
-    # 2) fallback 网易云
+    # 3) 网易云 fallback
     return await _search_netease(keyword, limit)
 
 
-async def get_download_url(song: SongResult) -> str:
-    """获取歌曲下载地址。优先中转音源 API，fallback 洛雪桥接/网易云。"""
-    # 1) 自定义中转音源 API
-    if song.source == "api" and song.mid:
+def _quality_attempts(song: SongResult, preferred: str = "") -> list[str]:
+    """生成音质尝试顺序：从高到低，优先用户指定档位。
+
+    档位来源是搜索阶段后置增强给出的**真实可得档位**；
+    拿不到时退化为从高到低全试（音源不支持的档会自行失败）。
+    """
+    ladder = ["flac24bit", "flac", "320k", "192k", "128k"]
+    avail = [q for q in song.qualitys if q in ladder] or list(song.qualitys or [])
+    ordered = [q for q in ladder if q in avail] or (avail or list(ladder))
+    pref = preferred or config.get("scrape.download_quality", "highest")
+    if pref and pref != "highest":
+        return [pref] + [q for q in ordered if q != pref]
+    return ordered
+
+
+async def get_download_url(song: SongResult, quality: str = "") -> str:
+    """获取歌曲下载地址。
+
+    1. 洛雪音源桥接：按音质阶梯从高到低尝试，由桥接内部轮询全部音源脚本
+    2. 中转音源 API（ikun 等）
+    3. 网易云直链兜底
+    """
+    attempts = _quality_attempts(song, quality)
+
+    # 1) 洛雪音源桥接（平台代号 + 音质阶梯）
+    if config.get("scrape.lx_enabled", True) and song.source in ("wy", "tx", "kg", "kw", "mg"):
+        try:
+            from app.services.providers.lx import LxSourceProvider
+
+            lx = LxSourceProvider()
+            for q in attempts:
+                dl = await lx.fetch_music_url(song.source, song.music_info, quality=q)
+                if dl:
+                    logger.info(f"取链成功: {song.title} @ {q}")
+                    return dl
+            logger.warning(f"洛雪音源未能取得 {song.title} 的直链（已试 {attempts}）")
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"洛雪音源取链异常: {e}")
+
+    # 2) 自定义中转音源 API
+    key = song.music_info.get("songmid") or song.mid
+    if key:
         url = _api_url()
         if url:
             try:
                 src = config.get("scrape.api_source", "tx")
-                quality = config.get("scrape.api_quality", "128k")
-                async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
-                    r = await client.post(
-                        f"{url}/music/url",
-                        headers=_api_headers(),
-                        json={"source": src, "musicId": song.mid, "quality": quality},
-                    )
-                    data = r.json()
-                    if data.get("code") == 200 and data.get("url"):
-                        return data["url"]
-                    logger.warning(f"中转音源取链接失败: {data.get('message')}")
+                for q in attempts[:1] or ["flac"]:
+                    async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+                        r = await client.post(
+                            f"{url}/music/url",
+                            headers=_api_headers(),
+                            json={"source": src, "musicId": key, "quality": q},
+                        )
+                        data = r.json()
+                        if data.get("code") == 200 and data.get("url"):
+                            return data["url"]
+                        logger.warning(f"中转音源取链接失败: {data.get('message')}")
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"中转音源取链接异常: {e}")
 
-    # 2) 洛雪音源桥接
-    if config.get("scrape.lx_enabled", True):
-        try:
-            from app.services.providers.lx import LxSourceProvider
-            lx = LxSourceProvider()
-            sources = lx.available_sources()
-            if sources:
-                use = config.get("scrape.lx_source", "") or sources[0]
-                dl = await lx.fetch_music_url(use, song.music_info)
-                if dl:
-                    return dl
-        except Exception as e:  # noqa: BLE001
-            logger.debug(f"洛雪音源 musicUrl 失败: {e}")
-
-    # 3) 网易云直链（免费歌曲可用）
-    if song.source == "netease" and song.id:
+    # 3) 网易云直链兜底（免费歌曲可用）
+    if song.source in ("wy", "netease") and song.id:
         return f"https://music.163.com/song/media/outer/url?id={song.id}.mp3"
 
     return ""

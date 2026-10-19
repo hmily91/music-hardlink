@@ -45,12 +45,20 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # 刮削数据源优先级
     "scrape": {
         "enabled": True,
-        "providers": ["netease", "qq", "musicbrainz"],   # 优先级顺序，自动 fallback
+        "providers": ["netease", "qq", "kugou", "kuwo", "musicbrainz"],  # 优先级顺序，自动 fallback
         "netease_cookie": "",
         "qq_cookie": "",
         "language": "zh",              # 歌词语言偏好
         "bilingual_lyrics": True,      # 双语歌词
         "timeout_seconds": 20,
+        # 最低匹配置信度（0~1）：低于此值视为误匹配，不写入外置资源。
+        # 调低可提升覆盖率但会增加错配风险；调高更保守。
+        "min_confidence": 0.6,
+        # 广告/推广关键词：命中的候选结果直接剔除（标题或歌手包含即命中）
+        "ad_keywords": [
+            "抖音热门", "热门铃声", "手机铃声", "彩铃", "全网首发",
+            "高清正版", "无损音乐下载", "歌曲下载", "试听片段",
+        ],
         "lx_enabled": True,            # 是否启用洛雪音源桥接（补齐歌词/封面）
         "lx_bridge_url": "http://127.0.0.1:2692",   # lx-bridge 地址
         "lx_source": "kw",             # 默认使用的洛雪音源 key（kw/kg/tx/wy/mg/local）
@@ -59,6 +67,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "api_key": "",                 # API Key（用户音源的 key）
         "api_source": "tx",            # 取链接时用的曲库 source（tx=QQ/kw=酷我/wy=网易云）
         "api_quality": "128k",         # 下载音质
+        # 搜索模式：auto=官方直连优先、失败回落中转音源；official=只用官方；relay=只用中转
+        "search_mode": "auto",
+        "search_platform": "",         # 指定默认搜索平台（wy/tx/kg/kw），留空则按下行顺序尝试
+        "search_platforms": ["tx", "wy", "kg", "kw"],
+        "download_quality": "highest", # 下载音质：highest=按阶梯从高到低自动降级
     },
 
     # 外置资源

@@ -65,25 +65,37 @@ class LxSourceProvider(BaseProvider):
             logger.debug(f"洛雪音源歌词获取失败: {e}")
         return "", ""
 
-    async def fetch_music_url(self, source: str, music_info: dict, quality: str = "128k") -> str:
-        """通过指定音源获取歌曲播放/下载 URL。"""
+    async def fetch_music_url(
+        self, source: str, music_info: dict, quality: str = "128k", script: str = ""
+    ) -> str:
+        """获取歌曲播放/下载 URL。
+
+        `source` 是**平台代号**（wy / tx / kg / kw），洛雪协议要求如此；
+        `script` 是音源脚本 key，留空则由桥接按序轮询全部已加载音源。
+        """
         import json
+        params = {
+            "source": source,
+            "action": "musicUrl",
+            "musicInfo": json.dumps(music_info, ensure_ascii=False),
+            "quality": quality,
+        }
+        if script:
+            params["script"] = script
         try:
-            r = await self._http.get(
-                f"{self._bridge_url}/action",
-                params={
-                    "source": source,
-                    "action": "musicUrl",
-                    "musicInfo": json.dumps(music_info, ensure_ascii=False),
-                    "quality": quality,
-                },
-            )
+            r = await self._http.get(f"{self._bridge_url}/action", params=params)
             if r.status_code == 200:
                 data = r.json().get("data", {})
                 if isinstance(data, str) and data.startswith("http"):
                     return data
                 if isinstance(data, dict):
                     return data.get("url", "") or data.get("musicUrl", "") or ""
+            else:
+                try:
+                    detail = (r.json().get("errors") or [r.json().get("message")])[:3]
+                except Exception:  # noqa: BLE001
+                    detail = [r.text[:200]]
+                logger.debug(f"洛雪音源取链失败 {source}@{quality}: {detail}")
         except Exception as e:  # noqa: BLE001
             logger.debug(f"洛雪音源 musicUrl 获取失败: {e}")
         return ""

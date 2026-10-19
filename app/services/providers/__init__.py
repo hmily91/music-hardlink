@@ -5,11 +5,15 @@ from app.services.providers.base import BaseProvider
 from app.services.providers.musicbrainz import MusicBrainzProvider
 from app.services.providers.netease import NeteaseProvider
 from app.services.providers.qq import QQMusicProvider
+from app.services.providers.kugou import KugouProvider
+from app.services.providers.kuwo import KuwoProvider
 from app.services.providers.lx import LxSourceProvider
 
 PROVIDERS: dict[str, type[BaseProvider]] = {
     "musicbrainz": MusicBrainzProvider,
     "netease": NeteaseProvider,
     "qq": QQMusicProvider,
+    "kugou": KugouProvider,
+    "kuwo": KuwoProvider,
     "lx": LxSourceProvider,
 }

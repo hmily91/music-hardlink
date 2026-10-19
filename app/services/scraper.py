@@ -35,9 +35,24 @@ class BatchResult:
     items: list[ScrapeResult] = field(default_factory=list)
 
 
+def _is_ad_result(meta: TrackMetadata) -> bool:
+    """判断候选是否为广告/推广条目（抖音热门、铃声下载之类）。"""
+    kws = config.get("scrape.ad_keywords", []) or []
+    if not kws:
+        return False
+    text = f"{meta.title or ''} {meta.artist or ''} {meta.album or ''}".lower()
+    return any(str(k).lower() in text for k in kws)
+
+
 async def _search_providers(info) -> Optional[TrackMetadata]:
-    """按配置优先级依次尝试数据源。"""
+    """按配置优先级依次尝试数据源。
+
+    命中判定采用「最低匹配置信度」：达到阈值立即返回；全部未达标时
+    返回 None（记为未匹配），避免把错误元数据写进外置资源 ——
+    错配的封面/歌词比缺失更难被发现。
+    """
     providers = config.get("scrape.providers", ["musicbrainz"])
+    min_conf = float(config.get("scrape.min_confidence", 0.6))
     best: Optional[TrackMetadata] = None
     for name in providers:
         cls = PROVIDERS.get(name)
@@ -46,14 +61,25 @@ async def _search_providers(info) -> Optional[TrackMetadata]:
         try:
             provider = cls()
             meta = await provider.search(info)
-            if meta and meta.match_score > 0.2:
+            if meta is None:
+                continue
+            if _is_ad_result(meta):
+                logger.info(f"[{info.path.name}] {name} 候选命中广告词，剔除")
+                continue
+            if meta.match_score >= min_conf:
                 logger.info(f"[{info.path.name}] {name} 命中 score={meta.match_score}")
                 return meta
-            if meta and (best is None or meta.match_score > best.match_score):
+            if best is None or meta.match_score > best.match_score:
                 best = meta
         except Exception as e:  # noqa: BLE001
             logger.warning(f"数据源 {name} 异常: {e}")
-    return best
+
+    if best is not None:
+        logger.warning(
+            f"[{info.path.name}] 最佳候选 score={best.match_score} 低于阈值 {min_conf}，"
+            f"判定为未匹配（来源 {best.provider}）"
+        )
+    return None
 
 
 async def scrape_track(target_path: str, force: bool = False) -> ScrapeResult:

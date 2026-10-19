@@ -263,6 +263,7 @@ async def search_music(keyword: str, limit: int = 20, source: str = ""):
             "id": s.id, "mid": s.mid, "title": s.title, "artist": s.artist,
             "album": s.album, "duration": s.duration,
             "source": s.source, "cover_url": s.cover_url,
+            "qualitys": list(s.qualitys or []),
         }
         for s in results
     ]}
@@ -270,14 +271,21 @@ async def search_music(keyword: str, limit: int = 20, source: str = ""):
 
 @router.get("/search/sources")
 def search_sources():
-    """返回可用曲库列表。"""
-    return {"data": [
-        {"key": "tx", "name": "QQ音乐"},
-        {"key": "kw", "name": "酷我音乐"},
-        {"key": "wy", "name": "网易云音乐"},
-        {"key": "kg", "name": "酷狗音乐"},
-        {"key": "mg", "name": "咪咕音乐"},
-    ]}
+    """返回可用曲库列表（官方直连，附带可用通道数）。"""
+    try:
+        from app.services import platforms
+
+        return {"data": [
+            {"key": p["id"], "name": p["label"], "channels": p["channels"]}
+            for p in platforms.list_platforms()
+        ]}
+    except Exception:  # noqa: BLE001
+        return {"data": [
+            {"key": "tx", "name": "QQ音乐"},
+            {"key": "kw", "name": "酷我音乐"},
+            {"key": "wy", "name": "网易云音乐"},
+            {"key": "kg", "name": "酷狗音乐"},
+        ]}
 
 
 @router.post("/download")

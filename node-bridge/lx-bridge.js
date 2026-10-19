@@ -279,6 +279,25 @@ function loadAllSources() {
 }
 
 // ---------- HTTP 路由 ----------
+/**
+ * 判断音源脚本的返回是否「有效」，决定是否需要轮询下一个音源。
+ * 取链场景必须以能否拿到 http 直链为准 —— 只返回空对象不代表成功。
+ */
+function isUsefulResult(action, result) {
+  if (action === 'musicUrl') {
+    if (typeof result === 'string' && result.startsWith('http')) return true;
+    if (result && typeof result === 'object') {
+      const u = result.url || result.musicUrl || result.data || result.src;
+      if (typeof u === 'string' && u.startsWith('http')) return true;
+    }
+    return false;
+  }
+  if (result === null || result === undefined) return false;
+  if (typeof result === 'string') return result.trim().length > 0;
+  if (typeof result === 'object') return Object.keys(result).length > 0;
+  return !!result;
+}
+
 async function handleRequest(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   const u = new URL(req.url, 'http://localhost');
@@ -312,17 +331,16 @@ async function handleRequest(req, res) {
       return send(200, { success: false, message: 'search 由内置数据源提供' });
     }
 
-    // action 请求: /action?source=xx&action=lyric|pic|musicUrl&...
+    // action 请求: /action?source=tx&action=musicUrl&musicInfo=&quality=&script=
+    // 注意语义区分：
+    //   source = 平台代号（wy / tx / kg / kw / mg），洛雪协议要求如此
+    //   script = 音源脚本 key（可选，留空则按序轮询全部已加载音源）
     if (u.pathname === '/action') {
       const source = u.searchParams.get('source');
       const action = u.searchParams.get('action');
+      const scriptKey = u.searchParams.get('script') || null;
       const musicInfoStr = u.searchParams.get('musicInfo') || '{}';
       const quality = u.searchParams.get('quality') || null;
-
-      const src = SOURCES.get(source);
-      if (!src || typeof src.requestHandler !== 'function') {
-        return send(404, { success: false, message: `音源 ${source} 不存在或未初始化` });
-      }
 
       let musicInfo;
       try {
@@ -331,13 +349,38 @@ async function handleRequest(req, res) {
         return send(400, { success: false, message: 'musicInfo 解析失败' });
       }
 
-      const info = { type: quality, musicInfo };
-      try {
-        const result = await src.requestHandler({ source, action, info });
-        return send(200, { success: true, data: result });
-      } catch (e) {
-        return send(500, { success: false, message: e.message });
+      let list;
+      if (scriptKey) {
+        const one = SOURCES.get(scriptKey);
+        if (!one || typeof one.requestHandler !== 'function') {
+          return send(404, { success: false, message: `音源 ${scriptKey} 不存在或未初始化` });
+        }
+        list = [one];
+      } else {
+        list = [...SOURCES.values()].filter((s) => typeof s.requestHandler === 'function');
       }
+      if (!list.length) {
+        return send(404, { success: false, message: '没有可用音源脚本' });
+      }
+
+      const info = { type: quality, musicInfo };
+      const errors = [];
+      for (const src of list) {
+        try {
+          const result = await src.requestHandler({ source, action, info });
+          if (isUsefulResult(action, result)) {
+            return send(200, { success: true, data: result, script: src.key });
+          }
+          errors.push(`${src.key}: 返回空结果`);
+        } catch (e) {
+          errors.push(`${src.key}: ${e && e.message ? e.message : e}`);
+        }
+      }
+      return send(502, {
+        success: false,
+        message: `全部音源均未返回有效结果（${action}）`,
+        errors,
+      });
     }
 
     // 读取请求体（用于 POST /action）
